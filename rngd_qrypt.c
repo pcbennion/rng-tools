@@ -48,7 +48,10 @@
 #include "fips.h"
 #include "rngd_entsource.h"
 
-#define QRYPT_URL "https://api-eus.qrypt.com/api/v1/entropy"
+#define QRYPT_AUTH_NONE "none"
+#define QRYPT_AUTH_BEARER "bearer"
+#define QRYPT_AUTH_XAPI "xapi"
+#define QRYPT_AUTH_XAPIKEY "xapikey"
 #define ENT_BUF 1024
 #define REFILL_THRESH 128
 static uint8_t entropy_buffer[ENT_BUF];
@@ -67,7 +70,8 @@ static bool   backoff_active;
 static struct timespec backoff_started;
 
 static struct rng *my_ent_src;
-static char *bearer;
+static char *auth_header;
+static char *client_key_passwd;
 
 struct body_buffer {
 	char *response;
@@ -76,6 +80,157 @@ struct body_buffer {
 
 static const char base64[] =
   "ABCDEFGHIJKLMNOPQRSTUV	WXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static bool string_option_is_set(const char *value)
+{
+	return value && value[0] != '\0';
+}
+
+static char *read_trimmed_file(const char *path)
+{
+	FILE *fp;
+	char *buffer = NULL;
+	char *newline;
+	size_t bytes_read;
+	struct stat st;
+
+	if (!string_option_is_set(path))
+		return NULL;
+
+	if (stat(path, &st) < 0 || st.st_size < 0)
+		return NULL;
+
+	buffer = calloc(st.st_size + 1, 1);
+	if (!buffer)
+		return NULL;
+
+	fp = fopen(path, "r");
+	if (!fp) {
+		free(buffer);
+		return NULL;
+	}
+
+	bytes_read = fread(buffer, 1, st.st_size, fp);
+	fclose(fp);
+	if (!bytes_read) {
+		free(buffer);
+		return NULL;
+	}
+
+	buffer[bytes_read] = '\0';
+	newline = strpbrk(buffer, "\r\n");
+	if (newline)
+		*newline = '\0';
+
+	return buffer;
+}
+
+static int build_auth_header(struct rng *ent_src)
+{
+	const char *auth_mode = ent_src->rng_options[QRYPT_OPT_AUTH_MODE].str_val;
+	const char *token_path = ent_src->rng_options[QRYPT_OPT_TOKEN_FILE].str_val;
+	const char *header_name;
+	char *token;
+	size_t header_size;
+
+	if (!string_option_is_set(auth_mode) || !strcmp(auth_mode, QRYPT_AUTH_NONE))
+		return 0;
+
+	if (!string_option_is_set(token_path)) {
+		message_entsrc(ent_src, LOG_DAEMON|LOG_INFO,
+			"No qrypt token file configured for auth mode %s\n", auth_mode);
+		return -1;
+	}
+
+	token = read_trimmed_file(token_path);
+	if (!token) {
+		message_entsrc(ent_src, LOG_DAEMON|LOG_INFO,
+			"Unable to read qrypt token file %s\n", token_path);
+		return -1;
+	}
+
+	if (!token[0]) {
+		message_entsrc(ent_src, LOG_DAEMON|LOG_INFO, "empty token file\n");
+		free(token);
+		return -1;
+	}
+
+	if (!strcmp(auth_mode, QRYPT_AUTH_BEARER))
+		header_name = "Authorization: Bearer ";
+	else if (!strcmp(auth_mode, QRYPT_AUTH_XAPI) ||
+		 !strcmp(auth_mode, QRYPT_AUTH_XAPIKEY))
+		header_name = "x-api-key: ";
+	else {
+		message_entsrc(ent_src, LOG_DAEMON|LOG_INFO,
+			"Unknown qrypt auth mode %s\n", auth_mode);
+		free(token);
+		return -1;
+	}
+
+	header_size = strlen(header_name) + strlen(token) + 1;
+	auth_header = calloc(header_size, 1);
+	if (!auth_header) {
+		message_entsrc(ent_src, LOG_DAEMON|LOG_INFO,
+			"Unable to allocate qrypt auth header\n");
+		free(token);
+		return -1;
+	}
+
+	snprintf(auth_header, header_size, "%s%s", header_name, token);
+	free(token);
+	return 0;
+}
+
+static int configure_qrypt_tls(CURL *curl, struct rng *ent_src)
+{
+	CURLcode res;
+	const char *ca_cert = ent_src->rng_options[QRYPT_OPT_CA_CERT].str_val;
+	const char *client_cert = ent_src->rng_options[QRYPT_OPT_CLIENT_CERT].str_val;
+	const char *client_key = ent_src->rng_options[QRYPT_OPT_CLIENT_KEY].str_val;
+
+	if (string_option_is_set(ca_cert)) {
+		res = curl_easy_setopt(curl, CURLOPT_CAINFO, ca_cert);
+		if (res != CURLE_OK) {
+			message_entsrc(my_ent_src, LOG_DAEMON|LOG_INFO,
+				"curl_easy_setopt(CAINFO) failed: %s\n", curl_easy_strerror(res));
+			return -1;
+		}
+	}
+
+	if (string_option_is_set(client_cert) != string_option_is_set(client_key)) {
+		message_entsrc(my_ent_src, LOG_DAEMON|LOG_INFO,
+			"Both clientcert and clientkey must be configured for qrypt mTLS\n");
+		return -1;
+	}
+
+	if (!string_option_is_set(client_cert))
+		return 0;
+
+	res = curl_easy_setopt(curl, CURLOPT_SSLCERT, client_cert);
+	if (res != CURLE_OK) {
+		message_entsrc(my_ent_src, LOG_DAEMON|LOG_INFO,
+			"curl_easy_setopt(SSLCERT) failed: %s\n", curl_easy_strerror(res));
+		return -1;
+	}
+
+	res = curl_easy_setopt(curl, CURLOPT_SSLKEY, client_key);
+	if (res != CURLE_OK) {
+		message_entsrc(my_ent_src, LOG_DAEMON|LOG_INFO,
+			"curl_easy_setopt(SSLKEY) failed: %s\n", curl_easy_strerror(res));
+		return -1;
+	}
+
+	if (string_option_is_set(client_key_passwd)) {
+		res = curl_easy_setopt(curl, CURLOPT_KEYPASSWD, client_key_passwd);
+		if (res != CURLE_OK) {
+			message_entsrc(my_ent_src, LOG_DAEMON|LOG_INFO,
+				"curl_easy_setopt(KEYPASSWD) failed: %s\n", curl_easy_strerror(res));
+			return -1;
+		}
+	}
+
+	return 0;
+}
 
 static size_t decodeQuantum(unsigned char *dest, const char *src)
 {
@@ -310,7 +465,8 @@ static void *refill_task(void *data __attribute__((unused)))
 		goto out;
 	}
 
-	res = curl_easy_setopt(curl, CURLOPT_URL, QRYPT_URL);
+	res = curl_easy_setopt(curl, CURLOPT_URL,
+		my_ent_src->rng_options[QRYPT_OPT_ENDPOINT].str_val);
 	if (res != CURLE_OK) {
 		message_entsrc(my_ent_src, LOG_DAEMON|LOG_INFO,
 			"curl_easy_setopt(URL) failed: %s\n", curl_easy_strerror(res));
@@ -334,9 +490,12 @@ static void *refill_task(void *data __attribute__((unused)))
 			"curl_easy_setopt(WRITEDATA) failed: %s\n", curl_easy_strerror(res));
 		goto out;
 	}
+	if (configure_qrypt_tls(curl, my_ent_src))
+		goto out;
 
 	list = curl_slist_append(list, "Accept: application/json");
-	list = curl_slist_append(list, bearer);
+	if (auth_header)
+		list = curl_slist_append(list, auth_header);
 
 	res = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, list);
 	if (res != CURLE_OK) {
@@ -495,53 +654,43 @@ int xread_qrypt(void *buf, size_t size, struct rng *ent_src)
  */
 int init_qrypt_entropy_source(struct rng *ent_src)
 {
-	FILE *tokfile;
-	char *token, *tokfname = ent_src->rng_options[QRYPT_OPT_TOKEN_FILE].str_val;
-	size_t toksize;
-	struct stat tokstat;
-	size_t header_extra_size = strlen("Authorization: Bearer  ");
+	const char *client_cert = ent_src->rng_options[QRYPT_OPT_CLIENT_CERT].str_val;
+	const char *client_key = ent_src->rng_options[QRYPT_OPT_CLIENT_KEY].str_val;
+	const char *client_keypass_file =
+		ent_src->rng_options[QRYPT_OPT_CLIENT_KEYPASS_FILE].str_val;
+	const char *endpoint = ent_src->rng_options[QRYPT_OPT_ENDPOINT].str_val;
 
 	message_entsrc(ent_src, LOG_DAEMON|LOG_INFO, "Initalizing qrypt beacon\n");
-	if (!tokfname) {
-		message_entsrc(ent_src, LOG_DAEMON|LOG_INFO, "No qrypt token file\n");
+	if (!string_option_is_set(endpoint)) {
+		message_entsrc(ent_src, LOG_DAEMON|LOG_INFO, "No qrypt endpoint configured\n");
 		return -1;
 	}
 
-	if (stat(tokfname, &tokstat) < 0) {
-		message_entsrc(ent_src, LOG_DAEMON|LOG_INFO, "Unable to stat qrypt token file\n");
+	if (string_option_is_set(client_cert) != string_option_is_set(client_key)) {
+		message_entsrc(ent_src, LOG_DAEMON|LOG_INFO,
+			"Both clientcert and clientkey must be configured for qrypt mTLS\n");
 		return -1;
 	}
 
-	token = alloca(tokstat.st_size + 1);
-	if (!token) {
-		message_entsrc(ent_src, LOG_DAEMON|LOG_INFO, "Unable to allocate token data\n");
-		return -1;
-	}
+	free(auth_header);
+	auth_header = NULL;
+	free(client_key_passwd);
+	client_key_passwd = NULL;
 
-	bearer = calloc(tokstat.st_size + header_extra_size, 1);
-	if (!bearer) {
-		message_entsrc(ent_src, LOG_DAEMON|LOG_INFO, "Unable to allocate Bearer space\n");
+	if (build_auth_header(ent_src))
 		return -1;
-	}
 
-	tokfile = fopen(tokfname, "r");
-	if (!tokfile) {
-		free(bearer);
-		message_entsrc(ent_src, LOG_DAEMON|LOG_INFO, "cant open token file\n");
-		return -1;
+	if (string_option_is_set(client_keypass_file)) {
+		client_key_passwd = read_trimmed_file(client_keypass_file);
+		if (!client_key_passwd) {
+			message_entsrc(ent_src, LOG_DAEMON|LOG_INFO,
+				"Unable to read qrypt client key passphrase file %s\n",
+				client_keypass_file);
+			free(auth_header);
+			auth_header = NULL;
+			return -1;
+		}
 	}
-
-	toksize = fread(token, 1, tokstat.st_size, tokfile);
-	fclose(tokfile);
-	if (!toksize) {
-		free(bearer);
-		message_entsrc(ent_src, LOG_DAEMON|LOG_INFO, "empty token file\n");
-		return -1;
-	}
-	token[toksize] = '\0';
-
-	snprintf(bearer, tokstat.st_size + header_extra_size, "Authorization: Bearer %s", token);
-	bearer = strtok(bearer, "\r\n");
 
 	backoff_max = ent_src->rng_options[QRYPT_OPT_MAX_ERROR_DELAY].int_val;
 	my_ent_src = ent_src;
@@ -552,7 +701,9 @@ int init_qrypt_entropy_source(struct rng *ent_src)
 
 void close_qrypt_entropy_source(struct rng *ent_src)
 {
-	free(bearer);
-	bearer = NULL;
+	free(auth_header);
+	auth_header = NULL;
+	free(client_key_passwd);
+	client_key_passwd = NULL;
 	return;
 }

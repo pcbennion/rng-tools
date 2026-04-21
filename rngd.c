@@ -312,6 +312,36 @@ static struct rng_option qrypt_options[] = {
 		.type = VAL_STRING,
 		.str_val = "/etc/qrypt.token",
 	},
+	[QRYPT_OPT_AUTH_MODE] = {
+		.key = "authmode",
+		.type = VAL_STRING,
+		.str_val = "bearer",
+	},
+	[QRYPT_OPT_ENDPOINT] = {
+		.key = "endpoint",
+		.type = VAL_STRING,
+		.str_val = "https://api-eus.qrypt.com/api/v1/entropy",
+	},
+	[QRYPT_OPT_CA_CERT] = {
+		.key = "cacert",
+		.type = VAL_STRING,
+		.str_val = "",
+	},
+	[QRYPT_OPT_CLIENT_CERT] = {
+		.key = "clientcert",
+		.type = VAL_STRING,
+		.str_val = "",
+	},
+	[QRYPT_OPT_CLIENT_KEY] = {
+		.key = "clientkey",
+		.type = VAL_STRING,
+		.str_val = "",
+	},
+	[QRYPT_OPT_CLIENT_KEYPASS_FILE] = {
+		.key = "clientkeypassfile",
+		.type = VAL_STRING,
+		.str_val = "",
+	},
 	[QRYPT_OPT_MAX_ERROR_DELAY] {
 		.key = "delay",
 		.type = VAL_INT,

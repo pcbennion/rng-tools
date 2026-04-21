@@ -212,7 +212,25 @@ guaranteed against man in the middle and other network based attacks.
 
 .TP
 Options
-\fBtokenfile - \fR Specify the file containing the access token to the Qrypt beacon
+\fBendpoint - \fR Specify the qrypt service URL to fetch entropy from
+
+\fBauthmode - \fR Specify the authentication mode to use. Supported values are
+\fBbearer\fR, \fBxapi\fR (or \fBxapikey\fR), and \fBnone\fR. The default is
+\fBbearer\fR.
+
+\fBtokenfile - \fR Specify the file containing the bearer token or x-api-key
+used by the configured auth mode
+
+\fBcacert - \fR Specify a CA certificate or bundle to trust for private or
+self-signed qrypt endpoints
+
+\fBclientcert - \fR Specify the PEM client certificate to present for mTLS
+
+\fBclientkey - \fR Specify the PEM client private key to present for mTLS.
+Configuring both \fBclientcert\fR and \fBclientkey\fR enables mTLS.
+
+\fBclientkeypassfile - \fR Specify a file containing the passphrase for an
+encrypted client private key
 
 \fBdelay - \fR Specify the maximum delay (in seconds) that the source will wait
 when there are temporary conditions preventing entropy retrieval before trying

@@ -56,6 +56,29 @@ Note that `sudo` is needed in the command because `rngd` accesses the root folde
 sudo rngd -f -x hwrng -x rdrand -x pkcs11 -x rtlsdr -n qrypt -O qrypt:tokenfile:<qrypt token path>
 ```
 
+To use an x-api-key against a custom endpoint with a private CA, add the Qrypt
+options below:
+
+```
+sudo rngd -f -x hwrng -x rdrand -x pkcs11 -x rtlsdr -n qrypt \
+    -O qrypt:authmode:xapi \
+    -O qrypt:tokenfile:/etc/rngd/qrypt.apikey \
+    -O qrypt:endpoint:https://entropy.example.internal/api/v1/entropy \
+    -O qrypt:cacert:/etc/rngd/internal-ca.pem
+```
+
+To enable mTLS, provide both a client certificate and matching private key.
+When both are configured, `rngd` presents them during the TLS handshake.
+
+```
+sudo rngd -f -x hwrng -x rdrand -x pkcs11 -x rtlsdr -n qrypt \
+    -O qrypt:authmode:none \
+    -O qrypt:endpoint:https://entropy.example.internal/api/v1/entropy \
+    -O qrypt:cacert:/etc/rngd/internal-ca.pem \
+    -O qrypt:clientcert:/etc/rngd/client.pem \
+    -O qrypt:clientkey:/etc/rngd/client-key.pem
+```
+
 Command line options:
 
 | Option | Description |
@@ -66,10 +89,23 @@ Command line options:
 | `-n <source>` | Enables the specified source. For example, `-n qrypt` |
 | `-O <source>:<key>:<value>` | Sets a source specific configuration option. For example, `-O qrypt:tokenfile:/etc/rngd/qrypt.token` |
 
+Qrypt-specific keys:
+
+| Key | Description |
+|-|-|
+| `endpoint` | HTTPS URL used for entropy requests |
+| `authmode` | `bearer`, `xapi` or `xapikey`, or `none` |
+| `tokenfile` | File containing the bearer token or x-api-key |
+| `cacert` | PEM CA cert or bundle used to trust a private endpoint |
+| `clientcert` | PEM client certificate for mTLS |
+| `clientkey` | PEM client private key for mTLS |
+| `clientkeypassfile` | File containing the private key passphrase |
+| `delay` | Maximum exponential backoff delay in seconds |
+
 ## Service Usage
 *rng-tools* comes with a `rngd.service` file for setting up a `systemd` service. To configure `rngd` to automatically start the Qrypt source on boot, follow these steps:
 
-Save your Qrypt api token to a system-accessible directory, such as `/etc/rngd/qrypt.token`. Then, edit `rngd.service` to add Qrypt arguments and options.
+Save your Qrypt API credential material to a system-accessible directory, such as `/etc/rngd/qrypt.token` for bearer auth or `/etc/rngd/client.pem` and `/etc/rngd/client-key.pem` for mTLS. Then, edit `rngd.service` to add Qrypt arguments and options.
 
 Note that `sudo` is needed in the subsequent commands because `rngd` accesses the root folder.
 
