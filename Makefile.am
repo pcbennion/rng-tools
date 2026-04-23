@@ -67,5 +67,11 @@ rngtest_LDADD	= librngd.a
 librngd_a_SOURCES = fips.h fips.c
 
 
-EXTRA_DIST	= autogen.sh
+# RPM packaging
+rpm: dist
+	rpmdev-setuptree
+	rpmbuild -ta $(distdir).tar.gz
 
+.PHONY: rpm
+
+EXTRA_DIST	= autogen.sh rng-tools.spec
