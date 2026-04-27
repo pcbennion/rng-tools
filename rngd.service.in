@@ -5,7 +5,16 @@ ConditionVirtualization=!container
 # The "-f" option is required for the systemd service rngd to work with Type=simple
 [Service]
 Type=simple
-ExecStart=@prefix@/sbin/rngd -f
+Environment="QRYPT_ENDPOINT=https://eaas-aws.qrypt.com/api/v1/entropy"
+Environment="QRYPT_AUTH_MODE=xapi"
+Environment="QRYPT_TOKEN_FILE=/etc/rngd/qrypt.token"
+EnvironmentFile=-/etc/sysconfig/rngd-qrypt
+ExecStart=@prefix@/sbin/rngd -f \
+	-x hwrng -x rdrand -x tpm -x jitter -x namedpipe -x rtlsdr -x pkcs11 \
+	-n qrypt \
+	-O qrypt:authmode:${QRYPT_AUTH_MODE} \
+	-O qrypt:tokenfile:${QRYPT_TOKEN_FILE} \
+	-O qrypt:endpoint:${QRYPT_ENDPOINT}
 
 [Install]
 WantedBy=multi-user.target

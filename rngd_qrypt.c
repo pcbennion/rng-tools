@@ -549,6 +549,10 @@ static void *refill_task(void *data __attribute__((unused)))
 
 		goto out;
 	}
+	message_entsrc(my_ent_src, LOG_DAEMON|LOG_INFO,
+		"qrypt request ok: endpoint=%s status=%lu bytes=%zu\n",
+		my_ent_src->rng_options[QRYPT_OPT_ENDPOINT].str_val,
+		response_code, response_data.size);
 	extract_and_refill_entropy(&response_data);
 	
 out:

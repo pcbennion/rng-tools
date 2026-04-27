@@ -1,0 +1,11 @@
+# Optional overrides for qrypt-only rngd service mode.
+# This file is read by systemd from /etc/sysconfig/rngd-qrypt.
+
+# Entropy endpoint
+QRYPT_ENDPOINT=https://eaas-aws.qrypt.com/api/v1/entropy
+
+# Supported values: bearer, xapi, xapikey, none.
+QRYPT_AUTH_MODE=xapi
+
+# Token or API key file path. Keep this file root-only (0600).
+QRYPT_TOKEN_FILE=/etc/rngd/qrypt.token
