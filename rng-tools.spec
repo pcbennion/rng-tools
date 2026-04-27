@@ -31,6 +31,7 @@ sources into the kernel's random pool, and rngtest for FIPS 140-2 testing.
 
 %install
 %make_install
+install -D -m 0644 rngd.service %{buildroot}%{_unitdir}/rngd.service
 install -D -m 0644 rngd-qrypt.sysconfig %{buildroot}%{_sysconfdir}/sysconfig/rngd-qrypt
 install -d -m 0755 %{buildroot}%{_sysconfdir}/rngd
 
