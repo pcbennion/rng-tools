@@ -49,6 +49,7 @@ install -d -m 0755 %{buildroot}%{_sysconfdir}/rngd
 %doc AUTHORS ChangeLog README.qrypt-rpm.md
 %{_sbindir}/rngd
 %{_bindir}/rngtest
+%{_bindir}/randstat
 %{_mandir}/man8/rngd.8*
 %{_mandir}/man1/rngtest.1*
 %{_unitdir}/rngd.service
