@@ -23,7 +23,6 @@ sources into the kernel's random pool, and rngtest for FIPS 140-2 testing.
 %autosetup
 
 %build
-./autogen.sh
 %configure \
     --without-pkcs11 \
     --without-rtlsdr \
@@ -46,7 +45,7 @@ install -d -m 0755 %{buildroot}%{_sysconfdir}/rngd
 
 %files
 %license COPYING
-%doc AUTHORS ChangeLog README.md README.qrypt-rpm.md
+%doc AUTHORS ChangeLog README.qrypt-rpm.md
 %{_sbindir}/rngd
 %{_bindir}/rngtest
 %{_mandir}/man8/rngd.8*
@@ -57,4 +56,4 @@ install -d -m 0755 %{buildroot}%{_sysconfdir}/rngd
 
 %changelog
 * Thu Apr 24 2025 Ryan Mandich <ryan@qrypt.com> - 6.17-1
-- Initial package for add-tls-configs branch
+- Initial package for add-tls-configs branch    
