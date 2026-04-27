@@ -9,7 +9,7 @@ man_MANS	 = rngd.8 rngtest.1
 noinst_LIBRARIES = librngd.a
 
 rngd_SOURCES	= rngd.h rngd.c	rngd_entsource.h rngd_entsource.c	\
-		  rngd_linux.h rngd_linux.c util.c ossl_helpers.c	\
+		  rngd_linux.h rngd_linux.c util.c ossl_helpers.h ossl_helpers.c	\
 		  rngd_namedpipe.c
 
 if NISTBEACON
