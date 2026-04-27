@@ -32,8 +32,34 @@ This RPM installs rngd configured to use only the qrypt entropy source.
 4. Validate logs:
 
    ```bash
-   sudo journalctl -u rngd -n 100 --no-pager
+   sudo journalctl -u rngd --since "10 min ago" --no-pager -o cat \
+     | grep -Ei 'qrypt|Initialized|Initialization Failed'
    ```
+
+## SELinux
+
+On SELinux-enforcing systems, `rngd` may be denied outbound HTTPS access even
+when the same qrypt request works from an interactive root shell. A typical
+symptom is a journal message like `Failed to send curl: Could not connect to
+server` together with an AVC denial for `rngd_t` connecting to port 443.
+
+To confirm:
+
+```bash
+sudo ausearch -m avc -c rngd -ts recent
+```
+
+To install a local policy module permitting this access:
+
+```bash
+sudo dnf install -y policycoreutils-python-utils checkpolicy
+sudo ausearch -m avc -c rngd --raw | audit2allow -M rngd_qrypt
+sudo semodule -i rngd_qrypt.pp
+sudo systemctl restart rngd
+```
+
+This creates a host-local SELinux policy module from the observed denials and
+applies it without disabling SELinux globally.
 
 ## Optional Overrides
 
